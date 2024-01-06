@@ -1,0 +1,7 @@
+__pycache__
+*.tmp
+.venv
+.datasets
+.pytest_cache
+.cache
+.devcontainer
