@@ -15,19 +15,20 @@ import subprocess
 import json
 import importlib.util
 
-PROJECT_DIR = Path(os.getcwd())
-while not (PROJECT_DIR / 'docker' / 'config.py').exists():
-    PROJECT_DIR = PROJECT_DIR.parent
-if PROJECT_DIR == Path('/'):
-    print(f"[red]Could not find config.py[/red]")
-    exit(1)
+def get_project_dir():
+    pdir = Path(os.getcwd())
+    while not (pdir / 'docker' / 'config.py').exists():
+        pdir = pdir.parent
+        if str(pdir) == '/':
+            return None
+    return pdir
 
 ENVS_DIR = Path(user_cache_dir("denvtool"))
-DEFAULT_ENV = PROJECT_DIR.name
-
 USER = os.environ.get('USER')
 UID = subprocess.check_output(['id', '-u']).decode().strip()
 GID = subprocess.check_output(['id', '-g']).decode().strip()
+
+# Utility functions templates can use
 
 def read_requirements(path):
     requirements = {}
@@ -43,6 +44,10 @@ def read_requirements(path):
             requirements[pkg] = {"version": ver, "extras": extras}
     am = attrmap.AttrMap(requirements)
     return au.convert_state(am, read_only=True)
+
+TEMPLATE_GLOBALS = {
+    'read_requirements': read_requirements
+}
 
 def get_path(env_name):
     return ENVS_DIR / env_name
@@ -62,10 +67,32 @@ def get_env(env_name):
         do_gen(env_name)
     return env_path
 
+def do_new(env_name):
+    cwd = Path(os.getcwd())
+    print(f"[blue]Making new denvtool project at [/blue][green]{cwd}[/green]")
+    templates_dir = Path(__file__).parent / "templates"
+    import inquirer
+    template_name = inquirer.prompt([
+        inquirer.List('template_name', message="What template should we use?",
+            choices=list(x.name for x in templates_dir.iterdir())
+        )
+    ])["template_name"]
+    # copy the template to the current directory /docker
+    template_dir = templates_dir / template_name
+    print(f"[blue]Initializing template from[/blue] [green]{template_dir}[/green]")
+    for p in template_dir.iterdir():
+        src = p
+        dest = cwd / p.name
+        if src.is_file():
+            shutil.copy(src, dest)
+        else:
+            shutil.copytree(src, dest)
+
 # import the project config.py to get the config
 def do_config(env_name):
     config_path = get_path(f"{env_name}.config")
-    config_py_path = PROJECT_DIR / 'docker' / 'config.py'
+    pdir = get_project_dir()
+    config_py_path = pdir / 'docker' / 'config.py'
     with open(config_py_path, 'r') as f:
         config_py = f.read()
     config_mod = importlib.util.module_from_spec(
@@ -86,12 +113,13 @@ def do_gen(env_name):
     env_path.mkdir(parents=True)
     print(f"Generating environment config for [blue]{env_name}[/blue]")
 
-    base_dir = PROJECT_DIR / 'docker'
+    pdir = get_project_dir()
+    base_dir = pdir / 'docker'
 
     template_args = {
         'env_name': env_name,
         'user': USER, 'uid': UID, 'gid': GID,
-        'project_dir': PROJECT_DIR,
+        'project_dir': pdir,
         'env_name': env_name,
         'env_path': env_path,
         'env_image': f"{env_name}-env",
@@ -107,7 +135,7 @@ def do_gen(env_name):
         if filename == 'devcontainer.json':
             continue
         template = environment.get_template(f"{filename}.template")
-        template.globals['read_requirements'] = read_requirements
+        template.globals.update(TEMPLATE_GLOBALS)
         content = template.render(**template_args)
         dest = env_path / filename
         with open(dest, 'w') as f:
@@ -118,8 +146,8 @@ def do_gen(env_name):
     # into .devcontainer/devcontainer.json
     dc_template = environment.get_template('devcontainer.json.template')
     if dc_template is not None:
-        dc_template.globals['read_requirements'] = read_requirements
-        dc_path = PROJECT_DIR / '.devcontainer' / 'devcontainer.json'
+        dc_template.globals.update(TEMPLATE_GLOBALS)
+        dc_path = pdir / '.devcontainer' / 'devcontainer.json'
         dc_path.parent.mkdir(parents=True, exist_ok=True)
         dc_content = dc_template.render(**template_args)
         with open(dc_path, 'w') as f:
@@ -127,7 +155,7 @@ def do_gen(env_name):
         print(f"Wrote [green]devcontainer.json[/green] to [green]{dc_path}[/green]")
     
     for f in config.context:
-        src = PROJECT_DIR / f
+        src = pdir / f
         dest = env_path / f
         if src.exists():
             if src.is_file():
@@ -176,6 +204,7 @@ def do_shell(env_name):
     ], cwd=env_path)
 
 COMMANDS = {
+    'new': do_new,
     'config': do_config,
     'gen': do_gen,
     'build': do_build,
@@ -192,7 +221,7 @@ def run():
         subparsers.add_parser(command, help=COMMANDS[command].__doc__)
     parser.add_argument('env_name',
         help='Name of the environment',
-        default=DEFAULT_ENV,
+        default=None,
         nargs='?'
     )
     args = parser.parse_args()
@@ -203,6 +232,12 @@ def run():
     elif args.command not in COMMANDS:
         print(f"[red]Unknown command:[/red] [blue]{args.command}[/blue]")
         return
+    if args.command != 'new' and env_name is None:
+        pdir = get_project_dir()
+        if pdir == None:
+            print(f"[red]No project directory found[/red]")
+            sys.exit(1)
+        env_name = pdir.name
     cmd = COMMANDS[args.command]
     cmd(env_name)
 
