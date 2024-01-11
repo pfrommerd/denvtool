@@ -32,19 +32,6 @@ RUN sed -i '/^jaxlib/d' /tmp/requirements.txt; \
 RUN pip install --no-index --find-links=file:///packages/ jaxlib=={{requirements.jaxlib.version}} jax=={{requirements.jax.version}}
 RUN pip install --find-links=file:///packages/ -r /tmp/requirements.txt
 
-# Setup the "launch" script
-
-RUN echo "#!/usr/bin/env python\n\
-import sys\n\
-import os\n\
-from latent_diffusion import launch\n\
-if __name__ == '__main__':\n\
-	cwd = os.getcwd()\n\
-	if cwd not in sys.path:\n\
-	    sys.path.append(cwd)\n\
-launch()\n" > /usr/local/bin/launch; \
-    chmod +x /usr/local/bin/launch
-
 # create the user info
 RUN useradd -d /home/{{user}} -s /usr/bin/fish --uid {{uid}} {{user}}
 # Make the mountpoints
