@@ -11,10 +11,10 @@ denvtool new
 in the root directory of the project folder.
 
 Denvtool has several steps:
-    1. Run docker/config.py to prompt the user for the environment configuration
-    2. Generate the Dockerfiles using the .templates in the docker folder
-    3. Build the container
-    4. Start the container
+ 1. Run docker/config.py to prompt the user for the environment configuration
+ 2. Generate the Dockerfiles using the .templates in the docker folder
+ 3. Build the container
+ 4. Start the container
 
 
 To generate the environment files, build the container, and start, use
