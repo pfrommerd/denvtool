@@ -33,7 +33,7 @@ RUN pip install --no-index --find-links=file:///packages/ jaxlib=={{requirements
 RUN pip install --find-links=file:///packages/ -r /tmp/requirements.txt
 
 # create the user info
-RUN useradd -d /home/{{user}} -s /usr/bin/fish --uid {{uid}} {{user}}
+RUN useradd -d /home/{{user}} -s /usr/bin/{{config.shell}} --uid {{uid}} {{user}}
 # Make the mountpoints
 RUN mkdir /home/{{user}}; \
     chown {{user}}:{{user}} /home/{{user}}
