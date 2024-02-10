@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-
+import sys
 import argparse
 import attrmap
 import attrmap.utils as au
@@ -13,6 +12,7 @@ from platformdirs import user_cache_dir
 import os
 import subprocess
 import json
+import toml
 import importlib.util
 
 def get_project_dir():
@@ -44,6 +44,13 @@ def read_requirements(path):
             requirements[pkg] = {"version": ver, "extras": extras}
     am = attrmap.AttrMap(requirements)
     return au.convert_state(am, read_only=True)
+
+def read_poetry_lock(path):
+    requirements = {}
+    with open(path) as f:
+        parsed = toml.load(f)
+    print(parsed)
+
 
 TEMPLATE_GLOBALS = {
     'read_requirements': read_requirements
