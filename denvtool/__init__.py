@@ -1,7 +1,6 @@
 import sys
 import argparse
-import attrmap
-import attrmap.utils as au
+from .util import AttrMap
 from jinja2 import Environment, FileSystemLoader
 
 import shutil
@@ -42,18 +41,68 @@ def read_requirements(path):
             ver = parts[0]
             extras = parts[1:]
             requirements[pkg] = {"version": ver, "extras": extras}
-    am = attrmap.AttrMap(requirements)
-    return au.convert_state(am, read_only=True)
+    return AttrMap.make_recursive(requirements)
 
-def read_poetry_lock(path):
+def read_poetry_project(path):
+    lock_path = path / "poetry.lock"
+    project_path = path / "pyproject.toml"
     requirements = {}
-    with open(path) as f:
-        parsed = toml.load(f)
-    print(parsed)
+    with open(project_path) as f:
+        parsed_project = toml.load(f)
+    for name, p in parsed_project["tool"]["poetry"]["dependencies"].items():
+        if name == "python":
+            continue
+        if isinstance(p, dict):
+            version = p.get("version", None)
+            sub_path = p.get("path", None)
+            if sub_path:
+                sub_deps = read_poetry_project(path / sub_path)
+                requirements.update(sub_deps)
+                continue
+        else:
+            version = p
+        if version is not None:
+            version = version.lstrip("^~")
+        requirements[name] = {"version": version, "extras": []}
+    if lock_path.exists():
+        with open(lock_path) as f:
+            parsed_lock = toml.load(f)
+        for p in parsed_lock["package"]:
+            if p["name"] in requirements:
+                requirements[p["name"]]["version"] = p["version"]
+    return AttrMap.make_recursive(requirements)
 
+def requirements_install_opts(requirements):
+    def format_package(name, p):
+        target = name
+        if p["extras"]:
+            target = target + "[" + ",".join(p["extras"]) + "]"
+        version = p["version"]
+        if version:
+            return f"{target}=={p.version}"
+        else:
+            return target
+    return " ".join([format_package(name, p) for name, p in requirements.items()])
+
+def filter_in(*args):
+    args = set(args)
+    return lambda x, *oargs: x in args
+
+def filter_not_in(*args):
+    args = set(args)
+    return lambda x, *oargs: x not in args
+
+def debug_print(*args):
+    print(*args)
+    return ""
 
 TEMPLATE_GLOBALS = {
-    'read_requirements': read_requirements
+    "read_requirements": read_requirements,
+    "read_poetry_project": read_poetry_project,
+    "requirements_install_opts": requirements_install_opts,
+    "filter_in": filter_in,
+    "filter_not_in": filter_not_in,
+    "debug_print": debug_print
 }
 
 def get_path(env_name):
@@ -64,8 +113,7 @@ def get_config(env_name):
     if not config_path.exists():
         do_config(env_name)
     with open(config_path) as f:
-        config = json.load(f, object_hook=attrmap.AttrMap)
-    config = au.convert_state(config, read_only=True)
+        config = json.load(f, object_hook=AttrMap)
     return config
 
 def get_env(env_name):
